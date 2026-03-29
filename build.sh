@@ -1,150 +1,95 @@
-#!/usr/bin/env bash
-#
-# build.sh — Build a systemd-nspawn container image from scratch.
-#
-# Creates a minimal Ubuntu rootfs via debootstrap, applies customization
-# scripts, and packs everything into a zstd-compressed tarball.
-#
+#!/bin/bash
 set -euo pipefail
 
-###############################################################################
-# Logging
-###############################################################################
-log() {
-    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-die() {
-    log "FATAL: $*" >&2
-    exit 1
-}
-
-###############################################################################
-# Root check
-###############################################################################
-if [[ "$(id -u)" -ne 0 ]]; then
-    die "This script must be run as root."
-fi
-
-###############################################################################
-# Resolve script directory & source config
-###############################################################################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/config.env"
 
-# Defaults
-IMAGE_NAME="nspawn-base"
-BASE_DISTRO="noble"
-BASE_MIRROR="http://archive.ubuntu.com/ubuntu"
-EXTRA_PACKAGES="curl wget vim less htop net-tools iputils-ping dnsutils"
+IMAGE_NAME="${IMAGE_NAME:-nspawn-base}"
+BASE_DISTRO="${BASE_DISTRO:-noble}"
+BASE_MIRROR="${BASE_MIRROR:-http://archive.ubuntu.com/ubuntu}"
+EXTRA_PACKAGES="${EXTRA_PACKAGES:-curl wget vim}"
 
-if [[ -f "${SCRIPT_DIR}/config.env" ]]; then
-    log "Sourcing ${SCRIPT_DIR}/config.env"
-    # shellcheck disable=SC1091
-    source "${SCRIPT_DIR}/config.env"
-else
-    log "No config.env found — using defaults."
+log() { echo "[$(date '+%H:%M:%S')] $*"; }
+
+if [[ $EUID -ne 0 ]]; then
+    echo "ERROR: must run as root" >&2
+    exit 1
 fi
 
-log "IMAGE_NAME=${IMAGE_NAME}"
-log "BASE_DISTRO=${BASE_DISTRO}"
-log "BASE_MIRROR=${BASE_MIRROR}"
-log "EXTRA_PACKAGES=${EXTRA_PACKAGES}"
-
-###############################################################################
-# Temp directory + cleanup trap
-###############################################################################
-ROOTFS_DIR=""
-
+ROOTFS=$(mktemp -d /tmp/nspawn-rootfs.XXXXXX)
 cleanup() {
-    if [[ -n "${ROOTFS_DIR}" && -d "${ROOTFS_DIR}" ]]; then
-        log "Cleaning up temporary rootfs at ${ROOTFS_DIR}"
-        # Unmount any leftover bind mounts (best-effort)
-        for mp in "${ROOTFS_DIR}/proc" "${ROOTFS_DIR}/sys" "${ROOTFS_DIR}/dev/pts" "${ROOTFS_DIR}/dev"; do
-            mountpoint -q "${mp}" 2>/dev/null && umount -l "${mp}" 2>/dev/null || true
-        done
-        rm -rf "${ROOTFS_DIR}"
-        log "Temporary rootfs removed."
-    fi
+    log "Cleaning up ${ROOTFS}..."
+    # unmount any leftover mounts
+    umount -lf "${ROOTFS}/proc" 2>/dev/null || true
+    umount -lf "${ROOTFS}/sys" 2>/dev/null || true
+    umount -lf "${ROOTFS}/dev/pts" 2>/dev/null || true
+    umount -lf "${ROOTFS}/dev" 2>/dev/null || true
+    rm -rf "${ROOTFS}"
 }
 trap cleanup EXIT
 
-ROOTFS_DIR="$(mktemp -d /tmp/nspawn-rootfs.XXXXXXXXXX)"
-log "Temporary rootfs directory: ${ROOTFS_DIR}"
+log "=== Building nspawn image: ${IMAGE_NAME} ==="
+log "Distro: ${BASE_DISTRO}  Mirror: ${BASE_MIRROR}"
+log "Extra packages: ${EXTRA_PACKAGES}"
+log "Rootfs: ${ROOTFS}"
 
-###############################################################################
-# Stage 1 — debootstrap
-###############################################################################
-log "Running debootstrap for ${BASE_DISTRO} from ${BASE_MIRROR} ..."
-debootstrap --variant=minbase "${BASE_DISTRO}" "${ROOTFS_DIR}" "${BASE_MIRROR}"
-log "debootstrap completed successfully."
+# Step 1: debootstrap
+log "Step 1/5: debootstrap"
+debootstrap --variant=minbase "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 
-###############################################################################
-# Stage 2 — Install extra packages
-###############################################################################
-if [[ -n "${EXTRA_PACKAGES}" ]]; then
-    log "Installing extra packages: ${EXTRA_PACKAGES}"
+# Step 2: Configure apt sources for universe
+log "Step 2/5: Configure apt & install extra packages"
+cat > "${ROOTFS}/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+Types: deb
+URIs: ${BASE_MIRROR}
+Suites: ${BASE_DISTRO} ${BASE_DISTRO}-updates ${BASE_DISTRO}-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
 
-    # Make sure DNS resolution works inside the chroot
-    cp -L /etc/resolv.conf "${ROOTFS_DIR}/etc/resolv.conf" 2>/dev/null || true
+# Mount necessary filesystems for chroot
+mount --bind /dev "${ROOTFS}/dev"
+mount --bind /dev/pts "${ROOTFS}/dev/pts"
+mount -t proc proc "${ROOTFS}/proc"
+mount -t sysfs sys "${ROOTFS}/sys"
 
-    chroot "${ROOTFS_DIR}" /bin/bash -c "
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq
-        apt-get install -y --no-install-recommends ${EXTRA_PACKAGES}
-    "
-    log "Extra packages installed."
-fi
+# Configure DNS in chroot
+cp /etc/resolv.conf "${ROOTFS}/etc/resolv.conf" 2>/dev/null || true
 
-###############################################################################
-# Stage 3 — Run customization scripts
-###############################################################################
-CUSTOMIZE_SRC="${SCRIPT_DIR}/customize.d"
+chroot "${ROOTFS}" apt-get update -qq
+# shellcheck disable=SC2086
+chroot "${ROOTFS}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    systemd systemd-sysv dbus ${EXTRA_PACKAGES}
 
-if [[ -d "${CUSTOMIZE_SRC}" ]]; then
-    log "Copying customize.d/ scripts into rootfs ..."
-    mkdir -p "${ROOTFS_DIR}/tmp/customize.d"
-    cp -a "${CUSTOMIZE_SRC}/"* "${ROOTFS_DIR}/tmp/customize.d/" 2>/dev/null || true
-
-    # Run each *.sh script in sorted order
-    SCRIPTS=( $(find "${ROOTFS_DIR}/tmp/customize.d" -maxdepth 1 -name '*.sh' -printf '%f\n' | sort) )
-
-    if [[ ${#SCRIPTS[@]} -gt 0 ]]; then
-        for script in "${SCRIPTS[@]}"; do
-            log "Running customize script: ${script}"
-            chroot "${ROOTFS_DIR}" /bin/bash "/tmp/customize.d/${script}"
-            log "Finished: ${script}"
-        done
-    else
-        log "No *.sh scripts found in customize.d/ — skipping."
-    fi
+# Step 3: Run customize scripts
+log "Step 3/5: Running customize scripts"
+if [[ -d "${SCRIPT_DIR}/customize.d" ]] && ls "${SCRIPT_DIR}/customize.d/"*.sh &>/dev/null; then
+    cp -r "${SCRIPT_DIR}/customize.d" "${ROOTFS}/tmp/customize.d"
+    chmod +x "${ROOTFS}/tmp/customize.d/"*.sh
+    for script in "${ROOTFS}/tmp/customize.d/"*.sh; do
+        name=$(basename "$script")
+        log "  Running ${name}..."
+        chroot "${ROOTFS}" /bin/bash "/tmp/customize.d/${name}"
+    done
+    rm -rf "${ROOTFS}/tmp/customize.d"
 else
-    log "No customize.d/ directory found — skipping customization."
+    log "  No customize scripts found, skipping."
 fi
 
-###############################################################################
-# Stage 4 — Cleanup inside rootfs
-###############################################################################
-log "Cleaning up rootfs ..."
-chroot "${ROOTFS_DIR}" /bin/bash -c "
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get clean
-    rm -rf /var/lib/apt/lists/*
-    rm -rf /var/cache/apt/archives/*.deb
-    rm -rf /var/cache/apt/archives/partial/*
-    rm -rf /tmp/*
-    rm -rf /var/tmp/*
-"
-log "Rootfs cleanup done."
+# Step 4: Clean up
+log "Step 4/5: Cleaning caches"
+umount -lf "${ROOTFS}/proc" 2>/dev/null || true
+umount -lf "${ROOTFS}/sys" 2>/dev/null || true
+umount -lf "${ROOTFS}/dev/pts" 2>/dev/null || true
+umount -lf "${ROOTFS}/dev" 2>/dev/null || true
+chroot "${ROOTFS}" apt-get clean 2>/dev/null || true
+rm -rf "${ROOTFS}/var/lib/apt/lists/"* "${ROOTFS}/var/cache/apt/"* "${ROOTFS}/tmp/"*
 
-###############################################################################
-# Stage 5 — Pack the image
-###############################################################################
-IMAGES_DIR="${SCRIPT_DIR}/images"
-mkdir -p "${IMAGES_DIR}"
+# Step 5: Pack
+log "Step 5/5: Packing tarball"
+mkdir -p "${SCRIPT_DIR}/images"
+OUTPUT="${SCRIPT_DIR}/images/${IMAGE_NAME}.tar.zst"
+tar -C "${ROOTFS}" -cf - . | zstd -T0 -9 > "${OUTPUT}"
 
-OUTPUT="${IMAGES_DIR}/${IMAGE_NAME}.tar.zst"
-log "Packing rootfs into ${OUTPUT} ..."
-tar -C "${ROOTFS_DIR}" -cf - . | zstd -T0 -9 > "${OUTPUT}"
-log "Image created: ${OUTPUT} ($(du -h "${OUTPUT}" | cut -f1))"
-
-log "Build complete."
+SIZE=$(du -h "${OUTPUT}" | cut -f1)
+log "=== Done! Image: ${OUTPUT} (${SIZE}) ==="

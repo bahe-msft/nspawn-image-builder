@@ -1,55 +1,52 @@
 # nspawn-image-builder
 
-Portable, reproducible images for `systemd-nspawn` containers, with S3 export/import.
+Build portable, reproducible systemd-nspawn container images with S3 export/import.
 
 ## Quick Start
 
 ```bash
-# 1. Edit config.env to set image name, distro, packages
-# 2. Add customization scripts to customize.d/ (run in sorted order)
-# 3. Build the image
-sudo ./build.sh            # → images/<IMAGE_NAME>.tar.zst
+# 1. Edit config.env for your needs (packages, image name, etc.)
+# 2. Drop custom scripts into customize.d/ (they run in sorted order)
+# 3. Build
+sudo ./build.sh
 
 # 4. Validate
-sudo ./validate.sh         # checks rootfs structure, packages, nspawn boot
+sudo ./validate.sh
 
 # 5. Export to S3
-./export.sh s3://bucket/path/
+./export.sh s3://my-bucket/images/
 
-# 6. On another VM: import + run
-sudo ./import.sh s3://bucket/path/nspawn-base.tar.zst
-sudo ./run.sh [--shell] [image-name]
-```
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `config.env` | Image name, base distro, mirror, extra packages |
-| `customize.d/*.sh` | Drop-in scripts run inside the rootfs (sorted order) |
-| `build.sh` | Builds rootfs via debootstrap + packs `.tar.zst` |
-| `export.sh` | Uploads tarball to S3 (aws cli or mc) |
-| `import.sh` | Downloads tarball from S3 + extracts to `/var/lib/machines/` |
-| `run.sh` | Launches container via `systemd-nspawn` |
-| `validate.sh` | End-to-end validation |
-
-## Dependencies
-
-- `debootstrap`, `systemd-container`, `zstd`
-- `awscli` or `mc` (for S3 export/import)
-
-## Configuration
-
-Edit `config.env`:
-
-```bash
-IMAGE_NAME="nspawn-base"     # tarball and machine name
-BASE_DISTRO="noble"           # Ubuntu release codename
-BASE_MIRROR="http://archive.ubuntu.com/ubuntu"
-EXTRA_PACKAGES="curl wget vim less htop net-tools iputils-ping dnsutils ca-certificates"
+# 6. On another VM: import and run
+sudo ./import.sh s3://my-bucket/images/nspawn-base.tar.zst
+sudo ./run.sh              # boot mode
+sudo ./run.sh --shell      # interactive shell
 ```
 
 ## Customization
 
-Drop executable `.sh` scripts into `customize.d/`. They run inside the rootfs
-via `chroot` in sorted order. Example: `customize.d/00-base-setup.sh`.
+Add shell scripts to `customize.d/`. They run inside the rootfs via `chroot` during build, sorted by filename. Example:
+
+```bash
+# customize.d/10-install-docker.sh
+#!/bin/bash
+apt-get install -y docker.io
+touch /etc/nspawn-customized
+```
+
+The `00-base-setup.sh` script handles timezone, networking, and creates the `/etc/nspawn-customized` marker file.
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `config.env` | Image name, distro, mirror, extra packages |
+| `customize.d/` | Drop-in scripts run inside the image during build |
+| `build.sh` | Builds rootfs + packs tarball |
+| `export.sh` | Uploads tarball to S3 |
+| `import.sh` | Downloads from S3 + extracts to /var/lib/machines/ |
+| `run.sh` | Launches container via systemd-nspawn |
+| `validate.sh` | End-to-end validation of built image |
+
+## Dependencies
+
+`debootstrap`, `systemd-container`, `zstd`, and optionally `awscli` or `mc` for S3.
