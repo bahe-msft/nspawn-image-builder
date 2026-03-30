@@ -158,6 +158,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Adjust mirror for Ubuntu ARM64 before debootstrap
+DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
+if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
+    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+fi
+
 log "=== Building nspawn image: ${IMAGE_NAME} ==="
 [[ -n "${VARIANT}" ]] && log "Variant: ${VARIANT}"
 log "Architecture: ${ARCH} (${DEBOOTSTRAP_ARCH})"
