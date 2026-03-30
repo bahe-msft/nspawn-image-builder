@@ -140,13 +140,6 @@ if [[ "${ARCH}" != "amd64" ]]; then
     IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
 fi
 
-# Adjust mirror for Ubuntu ARM64 BEFORE debootstrap
-DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
-if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
-    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
-    log "Using ARM64 mirror: ${BASE_MIRROR}"
-fi
-
 ROOTFS=$(mktemp -d /tmp/nspawn-rootfs.XXXXXX)
 cleanup() {
     log "Cleaning up ${ROOTFS}..."
@@ -158,10 +151,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Adjust mirror for Ubuntu ARM64 before debootstrap
+# Adjust mirror for Ubuntu ARM64 BEFORE debootstrap
 DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
 if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
     BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+    log "Using ARM64 mirror: ${BASE_MIRROR}"
 fi
 
 log "=== Building nspawn image: ${IMAGE_NAME} ==="
@@ -176,10 +170,12 @@ fi
 
 # Step 1: debootstrap
 log "Step 1/5: debootstrap"
-debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
-
-# Copy QEMU static binary for cross-architecture builds
 if ${CROSS_BUILD}; then
+    # For cross-architecture builds, use --foreign and run second stage after QEMU setup
+    log "Running debootstrap first stage (foreign)"
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" --foreign "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
+    
+    # Copy QEMU static binary for cross-architecture emulation
     log "Setting up QEMU emulation for cross-build"
     if [[ "${ARCH}" == "arm64" ]]; then
         QEMU_BIN="/usr/bin/qemu-aarch64-static"
@@ -187,6 +183,13 @@ if ${CROSS_BUILD}; then
         QEMU_BIN="/usr/bin/qemu-x86_64-static"
     fi
     cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
+    
+    # Run debootstrap second stage
+    log "Running debootstrap second stage"
+    chroot "${ROOTFS}" /debootstrap/debootstrap --second-stage
+else
+    # Native build - run debootstrap normally
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 fi
 
 # Step 2: Configure apt sources
