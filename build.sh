@@ -140,6 +140,13 @@ if [[ "${ARCH}" != "amd64" ]]; then
     IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
 fi
 
+# Adjust mirror for Ubuntu ARM64 BEFORE debootstrap
+DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
+if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
+    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+    log "Using ARM64 mirror: ${BASE_MIRROR}"
+fi
+
 ROOTFS=$(mktemp -d /tmp/nspawn-rootfs.XXXXXX)
 cleanup() {
     log "Cleaning up ${ROOTFS}..."
@@ -178,13 +185,6 @@ fi
 
 # Step 2: Configure apt sources
 log "Step 2/5: Configure apt & install extra packages"
-DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
-
-# Adjust mirror for Ubuntu ARM64 if using default Ubuntu mirror
-if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
-    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
-    log "Using ARM64 mirror: ${BASE_MIRROR}"
-fi
 
 if [[ "${DISTRO_FAMILY}" == "debian" ]]; then
     # Debian main + updates
