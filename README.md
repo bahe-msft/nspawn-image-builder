@@ -35,9 +35,9 @@ Variants define different image configurations. Each variant has its own package
 
 | Variant | Architecture | Image Name | Description |
 |---------|--------------|------------|-------------|
-| `ubuntu-noble` | amd64 | nspawn-ubuntu-noble | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
+| `ubuntu-noble` | amd64 | nspawn-ubuntu-noble-amd64 | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
 | `ubuntu-noble` | arm64 | nspawn-ubuntu-noble-arm64 | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
-| `ubuntu-noble-nvidia-560` | amd64 | nspawn-ubuntu-noble-nvidia-560 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
+| `ubuntu-noble-nvidia-560` | amd64 | nspawn-ubuntu-noble-nvidia-560-amd64 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 | `ubuntu-noble-nvidia-560` | arm64 | nspawn-ubuntu-noble-nvidia-560-arm64 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 
 > **NVIDIA 560 driver supported GPUs:** Ada Lovelace (RTX 40 series), Hopper (H100, H200), Grace Hopper, Blackwell (B100, B200, GB200), as well as older architectures including Ampere (RTX 30 series, A100), Turing (RTX 20 series, T4), and Volta (V100). For a full compatibility list, see the [NVIDIA Driver Documentation](https://www.nvidia.com/en-us/drivers/).

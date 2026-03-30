@@ -23,7 +23,7 @@ fi
 IMAGE_NAME="${IMAGE_NAME:-nspawn-base}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"
 
-# Normalize architecture
+# Normalize architecture and append suffix
 if [[ -n "${ARCH}" ]]; then
     case "${ARCH}" in
         amd64|x86_64)  ARCH="amd64" ;;
@@ -33,10 +33,12 @@ if [[ -n "${ARCH}" ]]; then
             exit 1
             ;;
     esac
-    # Append architecture to image name if not default
-    if [[ "${ARCH}" != "amd64" ]]; then
-        IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
-    fi
+    # Always append architecture suffix to image name
+    IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
+else
+    # If no arch specified, default to amd64 and append suffix
+    ARCH="amd64"
+    IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
 fi
 
 TARBALL="${SCRIPT_DIR}/images/${IMAGE_NAME}.tar.zst"

@@ -5,6 +5,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
+# --- Helper function: Resolve appropriate mirror for architecture and distro ---
+# Returns the correct package repository mirror URL based on the target
+# architecture and distribution family.
+#
+# Args:
+#   $1 - distro_family (e.g., "ubuntu")
+#   $2 - arch (e.g., "amd64", "arm64")
+#   $3 - default_mirror (e.g., "http://archive.ubuntu.com/ubuntu")
+#
+# Returns:
+#   Appropriate mirror URL via stdout
+#
+resolve_mirror_for_arch() {
+    local distro_family="$1"
+    local arch="$2"
+    local default_mirror="$3"
+    
+    # Ubuntu ARM64 requires ports.ubuntu.com instead of archive.ubuntu.com
+    if [[ "${distro_family}" == "ubuntu" && "${arch}" == "arm64" ]]; then
+        if [[ "${default_mirror}" == "http://archive.ubuntu.com/ubuntu" ]]; then
+            echo "http://ports.ubuntu.com/ubuntu-ports"
+            return
+        fi
+    fi
+    
+    # For all other cases, use the default mirror
+    echo "${default_mirror}"
+}
+
 # --- Argument parsing ---
 VARIANT=""
 BUILD_ALL=false
@@ -135,16 +164,15 @@ if [[ "${HOST_ARCH}" == "x86_64" && "${ARCH}" == "arm64" ]] || \
     fi
 fi
 
-# Append architecture to image name if not default
-if [[ "${ARCH}" != "amd64" ]]; then
-    IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
-fi
+# Always append architecture suffix to image name for consistency
+IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
 
-# Adjust mirror for Ubuntu ARM64 BEFORE debootstrap
+# Resolve appropriate mirror for architecture and distro
 DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
-if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
-    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
-    log "Using ARM64 mirror: ${BASE_MIRROR}"
+RESOLVED_MIRROR=$(resolve_mirror_for_arch "${DISTRO_FAMILY}" "${ARCH}" "${BASE_MIRROR}")
+if [[ "${RESOLVED_MIRROR}" != "${BASE_MIRROR}" ]]; then
+    log "Resolved architecture-specific mirror: ${RESOLVED_MIRROR}"
+    BASE_MIRROR="${RESOLVED_MIRROR}"
 fi
 
 ROOTFS=$(mktemp -d /tmp/nspawn-rootfs.XXXXXX)

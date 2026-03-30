@@ -157,10 +157,8 @@ jobs:
         id: meta
         run: |
           source variants/${{ matrix.variant }}.conf
-          # Append architecture suffix for non-amd64
-          if [[ "${{ matrix.arch }}" != "amd64" ]]; then
-            IMAGE_NAME="${IMAGE_NAME}-${{ matrix.arch }}"
-          fi
+          # Always append architecture suffix
+          IMAGE_NAME="${IMAGE_NAME}-${{ matrix.arch }}"
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Upload image as artifact
@@ -187,10 +185,8 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           source variants/${{ matrix.variant }}.conf
-          # Append architecture suffix for non-amd64
-          if [[ "${{ matrix.arch }}" != "amd64" ]]; then
-            IMAGE_NAME="${IMAGE_NAME}-${{ matrix.arch }}"
-          fi
+          # Always append architecture suffix
+          IMAGE_NAME="${IMAGE_NAME}-${{ matrix.arch }}"
           export IMAGE_NAME
           # Push with SHA tag
           ./ghcr-push.sh --tag "${{ steps.tag.outputs.tag }}"
