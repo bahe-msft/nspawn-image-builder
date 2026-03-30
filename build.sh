@@ -34,6 +34,29 @@ resolve_mirror_for_arch() {
     echo "${default_mirror}"
 }
 
+# --- Helper function: Resolve QEMU static binary path for architecture ---
+# Returns the full path to the QEMU static binary needed for cross-architecture
+# emulation based on the target architecture.
+#
+# Args:
+#   $1 - arch (e.g., "amd64", "arm64")
+#
+# Returns:
+#   QEMU binary path via stdout (e.g., "/usr/bin/qemu-aarch64-static")
+#
+resolve_qemu_binary() {
+    local arch="$1"
+    
+    case "${arch}" in
+        arm64) echo "/usr/bin/qemu-aarch64-static" ;;
+        amd64) echo "/usr/bin/qemu-x86_64-static" ;;
+        *)
+            echo "ERROR: Unknown architecture for QEMU: ${arch}" >&2
+            exit 1
+            ;;
+    esac
+}
+
 # --- Argument parsing ---
 VARIANT=""
 BUILD_ALL=false
@@ -145,23 +168,25 @@ esac
 # Check for cross-architecture build requirements
 HOST_ARCH=$(uname -m)
 CROSS_BUILD=false
+QEMU_BIN=""  # Will be set if cross-building
+
 if [[ "${HOST_ARCH}" == "x86_64" && "${ARCH}" == "arm64" ]] || \
    [[ "${HOST_ARCH}" == "aarch64" && "${ARCH}" == "amd64" ]]; then
     CROSS_BUILD=true
     log "Cross-architecture build detected: ${HOST_ARCH} -> ${ARCH}"
-    # Verify QEMU user static is available
-    if ! command -v qemu-aarch64-static &>/dev/null && [[ "${ARCH}" == "arm64" ]]; then
-        echo "ERROR: qemu-aarch64-static not found" >&2
+    
+    # Resolve and export QEMU binary path for this architecture
+    QEMU_BIN=$(resolve_qemu_binary "${ARCH}")
+    
+    # Verify QEMU binary exists on host
+    if [[ ! -f "${QEMU_BIN}" ]]; then
+        echo "ERROR: QEMU binary not found: ${QEMU_BIN}" >&2
         echo "For cross-architecture builds, install qemu-user-static:" >&2
         echo "  sudo apt-get install qemu-user-static binfmt-support" >&2
         exit 1
     fi
-    if ! command -v qemu-x86_64-static &>/dev/null && [[ "${ARCH}" == "amd64" ]]; then
-        echo "ERROR: qemu-x86_64-static not found" >&2
-        echo "For cross-architecture builds, install qemu-user-static:" >&2
-        echo "  sudo apt-get install qemu-user-static binfmt-support" >&2
-        exit 1
-    fi
+    
+    log "Using QEMU binary: ${QEMU_BIN}"
 fi
 
 # Always append architecture suffix to image name for consistency
@@ -205,21 +230,8 @@ if ${CROSS_BUILD}; then
     
     # Copy QEMU static binary for cross-architecture emulation
     log "Setting up QEMU emulation for cross-build"
-    if [[ "${ARCH}" == "arm64" ]]; then
-        QEMU_BIN="/usr/bin/qemu-aarch64-static"
-    else
-        QEMU_BIN="/usr/bin/qemu-x86_64-static"
-    fi
-    
-    # Ensure target directory exists
+    # QEMU_BIN was already resolved and validated earlier
     mkdir -p "${ROOTFS}/usr/bin"
-    
-    # Verify QEMU binary exists on host
-    if [[ ! -f "${QEMU_BIN}" ]]; then
-        echo "ERROR: QEMU binary not found: ${QEMU_BIN}" >&2
-        exit 1
-    fi
-    
     cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
     
     # Run debootstrap second stage
@@ -313,11 +325,8 @@ umount -lf "${ROOTFS}/dev/pts" 2>/dev/null || true
 umount -lf "${ROOTFS}/dev" 2>/dev/null || true
 # Remove QEMU static binary if it was copied for cross-build
 if ${CROSS_BUILD}; then
-    if [[ "${ARCH}" == "arm64" ]]; then
-        rm -f "${ROOTFS}/usr/bin/qemu-aarch64-static"
-    else
-        rm -f "${ROOTFS}/usr/bin/qemu-x86_64-static"
-    fi
+    # QEMU_BIN path was resolved earlier
+    rm -f "${ROOTFS}${QEMU_BIN}"
 fi
 chroot "${ROOTFS}" apt-get clean 2>/dev/null || true
 rm -rf "${ROOTFS}/var/lib/apt/lists/"* "${ROOTFS}/var/cache/apt/"* "${ROOTFS}/tmp/"*
