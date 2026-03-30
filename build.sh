@@ -97,10 +97,20 @@ debootstrap --variant=minbase "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 log "Step 2/5: Configure apt & install extra packages"
 DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
 if [[ "${DISTRO_FAMILY}" == "debian" ]]; then
+    # Debian main + updates
     cat > "${ROOTFS}/etc/apt/sources.list.d/debian.sources" <<EOF
 Types: deb
 URIs: ${BASE_MIRROR}
-Suites: ${BASE_DISTRO} ${BASE_DISTRO}-updates ${BASE_DISTRO}-security
+Suites: ${BASE_DISTRO} ${BASE_DISTRO}-updates
+Components: main contrib
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+    # Debian security uses a separate mirror and suite naming convention
+    cat >> "${ROOTFS}/etc/apt/sources.list.d/debian.sources" <<EOF
+
+Types: deb
+URIs: http://security.debian.org/debian-security
+Suites: ${BASE_DISTRO}-security
 Components: main contrib
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
