@@ -1,7 +1,7 @@
 #!/bin/bash
-# Test suite: gpu variant specifics
+# Test suite: nvidia variant specifics
 
-suite_header "Variant: gpu"
+suite_header "Variant: nvidia"
 
 # Customization marker
 assert_file_exists "/etc/nspawn-customized"
@@ -22,10 +22,10 @@ fi
 # Hostname
 if [[ -f "${ROOTFS}/etc/hostname" ]]; then
     HOSTNAME_VAL=$(cat "${ROOTFS}/etc/hostname")
-    if [[ "${HOSTNAME_VAL}" == "nspawn-gpu" ]]; then
-        test_pass "hostname is nspawn-gpu"
+    if [[ "${HOSTNAME_VAL}" == "nspawn-nvidia-560" ]]; then
+        test_pass "hostname is nspawn-nvidia-560"
     else
-        test_fail "hostname is nspawn-gpu" "got: ${HOSTNAME_VAL}"
+        test_fail "hostname is nspawn-nvidia-560" "got: ${HOSTNAME_VAL}"
     fi
 else
     test_fail "hostname is set" "/etc/hostname missing"
