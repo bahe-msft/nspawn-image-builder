@@ -38,6 +38,8 @@ Variants define different image configurations. Each variant has its own package
 | `ubuntu-noble` | nspawn-ubuntu-noble | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
 | `ubuntu-noble-nvidia-560` | nspawn-ubuntu-noble-nvidia-560 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 
+> **NVIDIA 560 driver supported GPUs:** Ada Lovelace (RTX 40 series), Hopper (H100, H200), Grace Hopper, Blackwell (B100, B200, GB200), as well as older architectures including Ampere (RTX 30 series, A100), Turing (RTX 20 series, T4), and Volta (V100). For a full compatibility list, see the [NVIDIA Driver Documentation](https://www.nvidia.com/en-us/drivers/).
+
 ### Creating a Custom Variant
 
 1. Create `variants/<name>.conf` with your configuration:
