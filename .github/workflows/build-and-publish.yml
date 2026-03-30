@@ -78,6 +78,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             debootstrap systemd-container zstd qemu-user-static binfmt-support
+      
+      - name: Set up QEMU for cross-architecture builds
+        run: |
+          # Register binfmt handlers with fix-binary flag (F) so they work in chroots
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
       - name: Set up QEMU binfmt
         if: matrix.arch != 'amd64'
