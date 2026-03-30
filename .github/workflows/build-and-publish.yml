@@ -65,7 +65,12 @@ jobs:
 
   build:
     needs: discover
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
+    # Use ARM64 runners for ARM64 builds (self-hosted), ubuntu-latest for AMD64
+    # ARM64 builds require self-hosted ARM64 runners with labels: [self-hosted, linux, ARM64]
+    # If ARM64 runners are not available, jobs will remain queued until timeout.
+    # To use QEMU cross-compilation instead, change ARM64 line to 'ubuntu-latest' and
+    # uncomment QEMU setup steps below.
+    runs-on: ${{ matrix.arch == 'arm64' && fromJSON('["self-hosted", "linux", "ARM64"]') || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
@@ -73,11 +78,56 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect runner architecture
+        id: detect
+        run: |
+          RUNNER_ARCH=$(uname -m)
+          echo "runner_arch=${RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+          echo "Runner architecture: ${RUNNER_ARCH}"
+          echo "Target architecture: ${{ matrix.arch }}"
+          
+          # Determine if we need cross-compilation
+          NEED_QEMU=false
+          if [[ "${{ matrix.arch }}" == "arm64" && "${RUNNER_ARCH}" != "aarch64" ]]; then
+            NEED_QEMU=true
+          elif [[ "${{ matrix.arch }}" == "amd64" && "${RUNNER_ARCH}" == "aarch64" ]]; then
+            NEED_QEMU=true
+          fi
+          echo "need_qemu=${NEED_QEMU}" >> "$GITHUB_OUTPUT"
+          echo "Needs QEMU: ${NEED_QEMU}"
+
+      - name: Set up QEMU for cross-architecture builds
+        if: steps.detect.outputs.need_qemu == 'true'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.arch == 'arm64' && 'arm64' || 'amd64' }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            debootstrap systemd-container zstd
+          
+          # Base dependencies
+          DEPS="debootstrap systemd-container zstd"
+          
+          # Add QEMU dependencies if cross-compiling
+          if [[ "${{ steps.detect.outputs.need_qemu }}" == "true" ]]; then
+            DEPS="${DEPS} qemu-user-static binfmt-support"
+          fi
+          
+          sudo apt-get install -y --no-install-recommends ${DEPS}
+
+      - name: Register QEMU binfmt handlers
+        if: steps.detect.outputs.need_qemu == 'true'
+        run: |
+          # Register binfmt handlers with fix-binary flag (F) so they work in chroots
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          
+          # Verify registration
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            echo "Checking for qemu-aarch64 registration:"
+            ls -la /proc/sys/fs/binfmt_misc/qemu-aarch64 || echo "Warning: qemu-aarch64 not registered"
+            cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
+          fi
 
       - name: Install ORAS
         run: |

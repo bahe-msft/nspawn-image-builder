@@ -147,8 +147,8 @@ The included workflow automatically:
 
 1. Discovers all variants and builds them for **both amd64 and arm64** architectures in parallel (matrix strategy)
 2. Uses **architecture-native runners** for optimal build performance:
-   - `ubuntu-latest` (x86_64) for amd64 builds
-   - `ubuntu-24.04-arm64` for arm64 builds (requires GitHub-hosted ARM64 runners or self-hosted)
+   - `ubuntu-latest` (x86_64) for amd64 builds  
+   - Self-hosted ARM64 runners (labels: `self-hosted`, `linux`, `ARM64`) for arm64 builds
 3. Validates each image with `validate.sh`
 4. Runs the full test suite for each variant/architecture combination
 5. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
@@ -156,7 +156,9 @@ The included workflow automatically:
 
 Use `workflow_dispatch` to build a specific variant, architecture, or use a custom tag.
 
-**Note:** Native builds are always preferred for performance. If ARM64 runners are unavailable, the build scripts support cross-compilation using QEMU emulation, though this is 10-50x slower. GitHub-hosted ARM64 runners require a Team or Enterprise plan; alternatively, you can use self-hosted ARM64 runners.
+**Note:** Native builds are always preferred for performance. ARM64 builds require self-hosted ARM64 runners (see [`docs/CI-CD-RUNNERS.md`](docs/CI-CD-RUNNERS.md) for setup instructions). If ARM64 runners are unavailable, the workflow falls back to QEMU cross-compilation on x86_64 runners (10-50x slower).
+
+**Runner Configuration**: See [`docs/CI-CD-RUNNERS.md`](docs/CI-CD-RUNNERS.md) for detailed setup instructions for ARM64 runners.
 
 ### Manual Push / Pull
 
