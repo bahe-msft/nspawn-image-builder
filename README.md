@@ -39,6 +39,8 @@ Variants define different image configurations. Each variant has its own package
 | `ubuntu-noble-nvidia-560` | nspawn-ubuntu-noble-nvidia-560 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 
 > **NVIDIA 560 driver supported GPUs:** Ada Lovelace (RTX 40 series), Hopper (H100, H200), Grace Hopper, Blackwell (B100, B200, GB200), as well as older architectures including Ampere (RTX 30 series, A100), Turing (RTX 20 series, T4), and Volta (V100). For a full compatibility list, see the [NVIDIA Driver Documentation](https://www.nvidia.com/en-us/drivers/).
+>
+> **Host requirements:** The host machine must have a compatible NVIDIA GPU and a matching or newer kernel-mode driver (≥ 560.x) installed. The container image includes only userspace libraries and utilities (no kernel modules). At runtime, the host's GPU devices (`/dev/nvidia*`) and driver files must be bind-mounted into the nspawn container — for example via `systemd-nspawn --bind=/dev/nvidia0 --bind=/dev/nvidiactl --bind=/dev/nvidia-uvm`. The host kernel driver handles hardware access; the container's userspace components communicate with it.
 
 ### Creating a Custom Variant
 
