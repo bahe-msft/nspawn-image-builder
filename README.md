@@ -33,10 +33,12 @@ Variants define different image configurations. Each variant has its own package
 ./build.sh --list-variants
 ```
 
-| Variant | Image Name | Description |
-|---------|------------|-------------|
-| `ubuntu-noble` | nspawn-ubuntu-noble | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
-| `ubuntu-noble-nvidia-560` | nspawn-ubuntu-noble-nvidia-560 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
+| Variant | Architecture | Image Name | Description |
+|---------|--------------|------------|-------------|
+| `ubuntu-noble` | amd64 | nspawn-ubuntu-noble-amd64 | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
+| `ubuntu-noble` | arm64 | nspawn-ubuntu-noble-arm64 | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
+| `ubuntu-noble-nvidia-560` | amd64 | nspawn-ubuntu-noble-nvidia-560-amd64 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
+| `ubuntu-noble-nvidia-560` | arm64 | nspawn-ubuntu-noble-nvidia-560-arm64 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 
 > **NVIDIA 560 driver supported GPUs:** Ada Lovelace (RTX 40 series), Hopper (H100, H200), Grace Hopper, Blackwell (B100, B200, GB200), as well as older architectures including Ampere (RTX 30 series, A100), Turing (RTX 20 series, T4), and Volta (V100). For a full compatibility list, see the [NVIDIA Driver Documentation](https://www.nvidia.com/en-us/drivers/).
 >
@@ -99,13 +101,13 @@ Images can be published to GHCR as OCI artifacts, either via CI or manually.
 
 The included workflow automatically:
 
-1. Discovers all variants and builds them in parallel (matrix strategy)
+1. Discovers all variants and builds them for **both amd64 and arm64** architectures in parallel (matrix strategy)
 2. Validates each image with `validate.sh`
-3. Runs the full test suite for each variant
+3. Runs the full test suite for each variant/architecture combination
 4. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
-5. On pushes to `main`: publishes each variant to **GHCR** with commit-SHA and `latest` tags
+5. On pushes to `main`: publishes each variant+architecture to **GHCR** with commit-SHA and `latest` tags
 
-Use `workflow_dispatch` to build a specific variant or use a custom tag.
+Use `workflow_dispatch` to build a specific variant, architecture, or use a custom tag.
 
 ### Manual Push / Pull
 
@@ -160,6 +162,25 @@ touch /etc/nspawn-customized
 
 ## Dependencies
 
-`debootstrap`, `systemd-container`, `zstd`, and optionally:
+**Required:**
+- `debootstrap` - Bootstrap Debian/Ubuntu base systems
+- `systemd-container` - systemd-nspawn container manager
+- `zstd` - Compression for tarball images
+
+**For cross-architecture builds:**
+- `qemu-user-static` - QEMU user-mode emulation
+- `binfmt-support` - Binary format support for foreign architectures
+
+**Optional:**
 - `awscli` or `mc` for S3 export/import
 - [`oras`](https://oras.land) for GHCR push/pull (auto-installed by scripts if missing)
+
+### Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install debootstrap systemd-container zstd
+
+# For cross-architecture support
+sudo apt-get install qemu-user-static binfmt-support
+```

@@ -16,19 +16,22 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VARIANT=""
 SUITE_FILTER=""
 LIST_ONLY=false
+ARCH=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --variant) VARIANT="$2"; shift 2 ;;
         --suite)   SUITE_FILTER="$2"; shift 2 ;;
+        --arch)    ARCH="$2"; shift 2 ;;
         --list)    LIST_ONLY=true; shift ;;
         -h|--help)
-            echo "Usage: $0 [--variant <name>] [--suite <name>] [--list]"
+            echo "Usage: $0 [--variant <name>] [--suite <name>] [--arch <arch>] [--list]"
             echo ""
             echo "Options:"
             echo "  --variant <name>  Test a specific variant (base, dev, debian)"
             echo "  --suite <name>    Run only a specific test suite"
+            echo "  --arch <arch>     Target architecture (amd64, arm64)"
             echo "  --list            List available test suites and exit"
             exit 0
             ;;
@@ -46,6 +49,25 @@ fi
 export IMAGE_NAME="${IMAGE_NAME:-nspawn-base}"
 export EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"
 export VARIANT="${VARIANT:-base}"
+
+# Normalize architecture and append suffix
+if [[ -n "${ARCH}" ]]; then
+    case "${ARCH}" in
+        amd64|x86_64)  ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *)
+            echo "ERROR: Unsupported architecture: ${ARCH}" >&2
+            exit 1
+            ;;
+    esac
+    # Always append architecture suffix to image name
+    IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
+else
+    # If no arch specified, default to amd64 and append suffix
+    ARCH="amd64"
+    IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
+fi
+export ARCH
 
 # Discover suites
 SUITES_DIR="${SCRIPT_DIR}/suites"

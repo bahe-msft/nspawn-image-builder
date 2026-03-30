@@ -5,14 +5,68 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
+# --- Helper function: Resolve appropriate mirror for architecture and distro ---
+# Returns the correct package repository mirror URL based on the target
+# architecture and distribution family.
+#
+# Args:
+#   $1 - distro_family (e.g., "ubuntu")
+#   $2 - arch (e.g., "amd64", "arm64")
+#   $3 - default_mirror (e.g., "http://archive.ubuntu.com/ubuntu")
+#
+# Returns:
+#   Appropriate mirror URL via stdout
+#
+resolve_mirror_for_arch() {
+    local distro_family="$1"
+    local arch="$2"
+    local default_mirror="$3"
+    
+    # Ubuntu ARM64 requires ports.ubuntu.com instead of archive.ubuntu.com
+    if [[ "${distro_family}" == "ubuntu" && "${arch}" == "arm64" ]]; then
+        if [[ "${default_mirror}" == "http://archive.ubuntu.com/ubuntu" ]]; then
+            echo "http://ports.ubuntu.com/ubuntu-ports"
+            return
+        fi
+    fi
+    
+    # For all other cases, use the default mirror
+    echo "${default_mirror}"
+}
+
+# --- Helper function: Resolve QEMU static binary path for architecture ---
+# Returns the full path to the QEMU static binary needed for cross-architecture
+# emulation based on the target architecture.
+#
+# Args:
+#   $1 - arch (e.g., "amd64", "arm64")
+#
+# Returns:
+#   QEMU binary path via stdout (e.g., "/usr/bin/qemu-aarch64-static")
+#
+resolve_qemu_binary() {
+    local arch="$1"
+    
+    case "${arch}" in
+        arm64) echo "/usr/bin/qemu-aarch64-static" ;;
+        amd64) echo "/usr/bin/qemu-x86_64-static" ;;
+        *)
+            echo "ERROR: Unknown architecture for QEMU: ${arch}" >&2
+            exit 1
+            ;;
+    esac
+}
+
 # --- Argument parsing ---
 VARIANT=""
 BUILD_ALL=false
+ARCH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --variant) VARIANT="$2"; shift 2 ;;
         --all)     BUILD_ALL=true; shift ;;
+        --arch)    ARCH="$2"; shift 2 ;;
         --list-variants)
             echo "Available variants:"
             for f in "${SCRIPT_DIR}/variants/"*.conf; do
@@ -24,14 +78,16 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -h|--help)
-            echo "Usage: $0 [--variant <name>] [--all] [--list-variants]"
+            echo "Usage: $0 [--variant <name>] [--all] [--arch <arch>] [--list-variants]"
             echo ""
             echo "Options:"
             echo "  --variant <name>   Build a specific variant (loads variants/<name>.conf)"
             echo "  --all              Build all variants"
+            echo "  --arch <arch>      Target architecture (amd64, arm64; default: host arch)"
             echo "  --list-variants    List available variants and exit"
             echo ""
             echo "Without --variant, builds using config.env defaults."
+            echo "Supported architectures: amd64 (x86_64), arm64 (aarch64)"
             exit 0
             ;;
         *) echo "Unknown arg: $1" >&2; exit 1 ;;
@@ -49,7 +105,11 @@ if ${BUILD_ALL}; then
         [[ -f "$f" ]] || continue
         name=$(basename "$f" .conf)
         log "=== Building variant: ${name} ==="
-        "$0" --variant "${name}"
+        if [[ -n "${ARCH}" ]]; then
+            "$0" --variant "${name}" --arch "${ARCH}"
+        else
+            "$0" --variant "${name}"
+        fi
     done
     exit 0
 fi
@@ -72,6 +132,74 @@ BASE_DISTRO="${BASE_DISTRO:-noble}"
 BASE_MIRROR="${BASE_MIRROR:-http://archive.ubuntu.com/ubuntu}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-curl wget vim}"
 
+# --- Architecture detection and normalization ---
+if [[ -z "${ARCH}" ]]; then
+    # Detect host architecture
+    HOST_ARCH=$(uname -m)
+    case "${HOST_ARCH}" in
+        x86_64)  ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        *)
+            echo "ERROR: Unsupported host architecture: ${HOST_ARCH}" >&2
+            echo "Supported: x86_64 (amd64), aarch64 (arm64)" >&2
+            exit 1
+            ;;
+    esac
+    log "Auto-detected architecture: ${ARCH} (${HOST_ARCH})"
+else
+    # Normalize user-provided architecture
+    case "${ARCH}" in
+        amd64|x86_64)  ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *)
+            echo "ERROR: Unsupported architecture: ${ARCH}" >&2
+            echo "Supported: amd64 (x86_64), arm64 (aarch64)" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# Map to debootstrap architecture names
+case "${ARCH}" in
+    amd64) DEBOOTSTRAP_ARCH="amd64" ;;
+    arm64) DEBOOTSTRAP_ARCH="arm64" ;;
+esac
+
+# Check for cross-architecture build requirements
+HOST_ARCH=$(uname -m)
+CROSS_BUILD=false
+QEMU_BIN=""  # Will be set if cross-building
+
+if [[ "${HOST_ARCH}" == "x86_64" && "${ARCH}" == "arm64" ]] || \
+   [[ "${HOST_ARCH}" == "aarch64" && "${ARCH}" == "amd64" ]]; then
+    CROSS_BUILD=true
+    log "Cross-architecture build detected: ${HOST_ARCH} -> ${ARCH}"
+    
+    # Resolve and export QEMU binary path for this architecture
+    QEMU_BIN=$(resolve_qemu_binary "${ARCH}")
+    
+    # Verify QEMU binary exists on host
+    if [[ ! -f "${QEMU_BIN}" ]]; then
+        echo "ERROR: QEMU binary not found: ${QEMU_BIN}" >&2
+        echo "For cross-architecture builds, install qemu-user-static:" >&2
+        echo "  sudo apt-get install qemu-user-static binfmt-support" >&2
+        exit 1
+    fi
+    
+    log "Using QEMU binary: ${QEMU_BIN}"
+fi
+
+# Always append architecture suffix to image name for consistency
+IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
+
+# Resolve appropriate mirror for architecture and distro
+DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
+RESOLVED_MIRROR=$(resolve_mirror_for_arch "${DISTRO_FAMILY}" "${ARCH}" "${BASE_MIRROR}")
+if [[ "${RESOLVED_MIRROR}" != "${BASE_MIRROR}" ]]; then
+    log "Resolved architecture-specific mirror: ${RESOLVED_MIRROR}"
+    BASE_MIRROR="${RESOLVED_MIRROR}"
+fi
+
 ROOTFS=$(mktemp -d /tmp/nspawn-rootfs.XXXXXX)
 cleanup() {
     log "Cleaning up ${ROOTFS}..."
@@ -85,17 +213,38 @@ trap cleanup EXIT
 
 log "=== Building nspawn image: ${IMAGE_NAME} ==="
 [[ -n "${VARIANT}" ]] && log "Variant: ${VARIANT}"
+log "Architecture: ${ARCH} (${DEBOOTSTRAP_ARCH})"
 log "Distro: ${BASE_DISTRO}  Mirror: ${BASE_MIRROR}"
 log "Extra packages: ${EXTRA_PACKAGES}"
 log "Rootfs: ${ROOTFS}"
+if ${CROSS_BUILD}; then
+    log "Cross-build mode enabled"
+fi
 
 # Step 1: debootstrap
 log "Step 1/5: debootstrap"
-debootstrap --variant=minbase "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
+if ${CROSS_BUILD}; then
+    # For cross-architecture builds, use --foreign and run second stage after QEMU setup
+    log "Running debootstrap first stage (foreign)"
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" --foreign "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
+    
+    # Copy QEMU static binary for cross-architecture emulation
+    log "Setting up QEMU emulation for cross-build"
+    # QEMU_BIN was already resolved and validated earlier
+    mkdir -p "${ROOTFS}/usr/bin"
+    cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
+    
+    # Run debootstrap second stage
+    log "Running debootstrap second stage"
+    chroot "${ROOTFS}" /debootstrap/debootstrap --second-stage
+else
+    # Native build - run debootstrap normally
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
+fi
 
 # Step 2: Configure apt sources
 log "Step 2/5: Configure apt & install extra packages"
-DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
+
 if [[ "${DISTRO_FAMILY}" == "debian" ]]; then
     # Debian main + updates
     cat > "${ROOTFS}/etc/apt/sources.list.d/debian.sources" <<EOF
@@ -174,6 +323,11 @@ umount -lf "${ROOTFS}/proc" 2>/dev/null || true
 umount -lf "${ROOTFS}/sys" 2>/dev/null || true
 umount -lf "${ROOTFS}/dev/pts" 2>/dev/null || true
 umount -lf "${ROOTFS}/dev" 2>/dev/null || true
+# Remove QEMU static binary if it was copied for cross-build
+if ${CROSS_BUILD}; then
+    # QEMU_BIN path was resolved earlier
+    rm -f "${ROOTFS}${QEMU_BIN}"
+fi
 chroot "${ROOTFS}" apt-get clean 2>/dev/null || true
 rm -rf "${ROOTFS}/var/lib/apt/lists/"* "${ROOTFS}/var/cache/apt/"* "${ROOTFS}/tmp/"*
 
