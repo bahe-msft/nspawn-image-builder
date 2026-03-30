@@ -38,7 +38,7 @@ else
 
     # Can read its own os-release
     OUTPUT=$(nspawn_exec /bin/cat /etc/os-release 2>/dev/null || true)
-    if [[ "${OUTPUT}" == *"Ubuntu"* ]]; then
+    if echo "${OUTPUT}" | grep -qiE 'ubuntu|debian'; then
         test_pass "nspawn: read /etc/os-release"
     else
         test_fail "nspawn: read /etc/os-release"

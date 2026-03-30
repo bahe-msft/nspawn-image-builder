@@ -30,11 +30,12 @@ fi
 # os-release
 assert_file_exists "/etc/os-release"
 
-# Check distro in os-release
-if grep -qi "ubuntu" "${ROOTFS}/etc/os-release" 2>/dev/null; then
-    test_pass "os-release contains Ubuntu"
+# Check distro in os-release (Ubuntu or Debian)
+if grep -qiE "ubuntu|debian" "${ROOTFS}/etc/os-release" 2>/dev/null; then
+    DISTRO_ID=$(grep '^ID=' "${ROOTFS}/etc/os-release" | cut -d= -f2)
+    test_pass "os-release identifies distro: ${DISTRO_ID}"
 else
-    test_fail "os-release contains Ubuntu"
+    test_fail "os-release identifies a known distro"
 fi
 
 # Shell exists and is executable

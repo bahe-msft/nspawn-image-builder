@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [--variant <name>] [--suite <name>] [--list]"
             echo ""
             echo "Options:"
-            echo "  --variant <name>  Test a specific variant (base, dev, docker, hardened)"
+            echo "  --variant <name>  Test a specific variant (base, dev, debian)"
             echo "  --suite <name>    Run only a specific test suite"
             echo "  --list            List available test suites and exit"
             exit 0

@@ -10,8 +10,7 @@ sudo ./build.sh
 
 # 2. Or build a specific variant
 sudo ./build.sh --variant dev
-sudo ./build.sh --variant docker
-sudo ./build.sh --variant hardened
+sudo ./build.sh --variant debian
 
 # 3. Build all variants at once
 sudo ./build.sh --all
@@ -36,10 +35,9 @@ Variants define different image configurations. Each variant has its own package
 
 | Variant | Image Name | Description |
 |---------|------------|-------------|
-| `base` | nspawn-base | Minimal system with essential utilities |
+| `base` | nspawn-base | Minimal Ubuntu Noble system with essential utilities |
 | `dev` | nspawn-dev | Development tools: gcc, python3, git, cmake, gdb, tmux |
-| `docker` | nspawn-docker | Docker CE pre-installed with compose and buildx |
-| `hardened` | nspawn-hardened | Security-hardened: UFW, fail2ban, auditd, SSH hardening, sysctl tuning |
+| `debian` | nspawn-debian | Debian Bookworm base system with essential utilities |
 
 ### Creating a Custom Variant
 
@@ -76,7 +74,7 @@ sudo ./tests/run-tests.sh --variant base
 sudo ./tests/run-tests.sh --variant dev --suite packages
 
 # List available test suites
-./tests/run-tests.sh --variant hardened --list
+./tests/run-tests.sh --variant debian --list
 ```
 
 ### Test Suites
@@ -88,7 +86,7 @@ sudo ./tests/run-tests.sh --variant dev --suite packages
 | `services` | systemd-networkd/resolved enabled, no broken units |
 | `security` | No world-writable files, no unexpected SUID, shadow permissions, no empty passwords |
 | `nspawn` | Container execution, /proc and /sys mounted, DNS resolution, os-release readable |
-| `variant-*` | Variant-specific checks (e.g., gcc works for dev, docker binary exists for docker) |
+| `variant-*` | Variant-specific checks (e.g., gcc works for dev, Debian distro check for debian) |
 
 ## GHCR (GitHub Container Registry)
 

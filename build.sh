@@ -93,15 +93,26 @@ log "Rootfs: ${ROOTFS}"
 log "Step 1/5: debootstrap"
 debootstrap --variant=minbase "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 
-# Step 2: Configure apt sources for universe
+# Step 2: Configure apt sources
 log "Step 2/5: Configure apt & install extra packages"
-cat > "${ROOTFS}/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
+if [[ "${DISTRO_FAMILY}" == "debian" ]]; then
+    cat > "${ROOTFS}/etc/apt/sources.list.d/debian.sources" <<EOF
+Types: deb
+URIs: ${BASE_MIRROR}
+Suites: ${BASE_DISTRO} ${BASE_DISTRO}-updates ${BASE_DISTRO}-security
+Components: main contrib
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+else
+    cat > "${ROOTFS}/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
 URIs: ${BASE_MIRROR}
 Suites: ${BASE_DISTRO} ${BASE_DISTRO}-updates ${BASE_DISTRO}-security
 Components: main universe
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
+fi
 
 # Mount necessary filesystems for chroot
 mount --bind /dev "${ROOTFS}/dev"
