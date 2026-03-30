@@ -78,9 +78,13 @@ echo "${GHCR_TOKEN}" | oras login "${GHCR_REGISTRY}" --username "_token" --passw
 
 # Push the tarball as an OCI artifact
 echo "Pushing ${TARBALL} -> ${FULL_REF}"
+TARBALL_DIR="$(dirname "${TARBALL}")"
+TARBALL_NAME="$(basename "${TARBALL}")"
+pushd "${TARBALL_DIR}" > /dev/null
 oras push "${FULL_REF}" \
     --artifact-type "application/vnd.nspawn.image.v1" \
-    "${TARBALL}:application/vnd.nspawn.image.v1.tar+zstd"
+    "${TARBALL_NAME}:application/vnd.nspawn.image.v1.tar+zstd"
+popd > /dev/null
 
 SIZE=$(du -h "${TARBALL}" | cut -f1)
 echo "Done! Pushed ${IMAGE_NAME} (${SIZE}) to ${FULL_REF}"
