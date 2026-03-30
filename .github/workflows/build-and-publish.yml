@@ -65,12 +65,10 @@ jobs:
 
   build:
     needs: discover
-    # Use ARM64 runners for ARM64 builds (self-hosted), ubuntu-latest for AMD64
-    # ARM64 builds require self-hosted ARM64 runners with labels: [self-hosted, linux, ARM64]
-    # If ARM64 runners are not available, jobs will remain queued until timeout.
-    # To use QEMU cross-compilation instead, change ARM64 line to 'ubuntu-latest' and
-    # uncomment QEMU setup steps below.
-    runs-on: ${{ matrix.arch == 'arm64' && fromJSON('["self-hosted", "linux", "ARM64"]') || 'ubuntu-latest' }}
+    # All builds use GitHub-hosted ubuntu-latest runners
+    # ARM64 builds use QEMU cross-compilation on x86_64 runners
+    # This avoids dependency on self-hosted ARM64 runners
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
