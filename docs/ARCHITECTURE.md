@@ -7,6 +7,8 @@ The nspawn-image-builder supports building systemd-nspawn container images for m
 - **amd64** (x86_64) - Intel/AMD 64-bit processors
 - **arm64** (aarch64) - ARM 64-bit processors
 
+**ARM64 Support** (added 2026-03-30): Full support for ARM64 architecture has been implemented, enabling builds for ARM-based servers (AWS Graviton, Azure ARM), development workstations (Apple Silicon), and single-board computers (Raspberry Pi, NVIDIA Jetson). The implementation provides both native builds (when host and target architecture match) and cross-architecture builds using QEMU user-mode emulation. Images are automatically named with architecture suffixes (e.g., `nspawn-ubuntu-noble-arm64.tar.zst`) for non-amd64 builds, preserving backward compatibility for existing amd64 workflows.
+
 ## Build Modes
 
 ### 1. Native Build
