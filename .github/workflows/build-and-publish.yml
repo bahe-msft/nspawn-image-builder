@@ -56,11 +56,12 @@ jobs:
             ARCHS='["amd64","arm64"]'
           fi
           
-          # Create matrix
-          MATRIX=$(jq -n --argjson variants "${VARIANTS}" --argjson archs "${ARCHS}" \
+          # Create matrix (compact JSON on single line)
+          MATRIX=$(jq -n -c --argjson variants "${VARIANTS}" --argjson archs "${ARCHS}" \
             '{include: [$variants[] as $v | $archs[] as $a | {variant: $v, arch: $a}]}')
           echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
-          echo "Build matrix: ${MATRIX}"
+          echo "Build matrix:"
+          echo "${MATRIX}" | jq .
 
   build:
     needs: discover
