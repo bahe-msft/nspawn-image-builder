@@ -2,7 +2,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.env"
+
+# Parse --variant flag
+VARIANT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --variant) VARIANT="$2"; shift 2 ;;
+        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [[ -n "${VARIANT}" && -f "${SCRIPT_DIR}/variants/${VARIANT}.conf" ]]; then
+    source "${SCRIPT_DIR}/variants/${VARIANT}.conf"
+else
+    source "${SCRIPT_DIR}/config.env"
+fi
 
 IMAGE_NAME="${IMAGE_NAME:-nspawn-base}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"

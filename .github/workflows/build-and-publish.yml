@@ -1,4 +1,4 @@
-name: Build and Publish nspawn Image
+name: Build and Publish nspawn Images
 
 on:
   push:
@@ -10,6 +10,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      variant:
+        description: 'Variant to build (leave empty for all)'
+        required: false
+        default: ''
       image_tag:
         description: 'Image tag (default: git SHA short)'
         required: false
@@ -20,8 +24,35 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      variants: ${{ steps.list.outputs.variants }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover variants
+        id: list
+        run: |
+          INPUT_VARIANT="${{ github.event.inputs.variant }}"
+          if [[ -n "${INPUT_VARIANT}" ]]; then
+            # Build only the requested variant
+            echo "variants=[\"${INPUT_VARIANT}\"]" >> "$GITHUB_OUTPUT"
+          else
+            # Build all variants
+            VARIANTS=$(ls variants/*.conf 2>/dev/null | xargs -I{} basename {} .conf | jq -R . | jq -sc .)
+            echo "variants=${VARIANTS}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Variants to build: $(cat $GITHUB_OUTPUT)"
+
+  build:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJson(needs.discover.outputs.variants) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,19 +70,28 @@ jobs:
             | sudo tar -xz -C /usr/local/bin oras
           oras version
 
-      - name: Build image
-        run: sudo ./build.sh
+      - name: Build image (${{ matrix.variant }})
+        run: sudo ./build.sh --variant ${{ matrix.variant }}
 
-      - name: Validate image
-        run: sudo ./validate.sh
+      - name: Validate image (${{ matrix.variant }})
+        run: sudo ./validate.sh --variant ${{ matrix.variant }}
 
-      - name: Upload image as GitHub Actions artifact
+      - name: Run tests (${{ matrix.variant }})
+        run: sudo ./tests/run-tests.sh --variant ${{ matrix.variant }}
+
+      - name: Get image name
+        id: meta
+        run: |
+          source variants/${{ matrix.variant }}.conf
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nspawn-image
-          path: images/*.tar.zst
+          name: nspawn-${{ matrix.variant }}
+          path: images/${{ steps.meta.outputs.image_name }}.tar.zst
           retention-days: 30
-          compression-level: 0  # already zstd-compressed
+          compression-level: 0
 
       - name: Determine image tag
         id: tag
@@ -62,51 +102,47 @@ jobs:
             TAG="$(git rev-parse --short HEAD)"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Image tag: ${TAG}"
 
       - name: Push to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          source variants/${{ matrix.variant }}.conf
+          export IMAGE_NAME
           # Push with SHA tag
           ./ghcr-push.sh --tag "${{ steps.tag.outputs.tag }}"
           # Also tag as latest
           ./ghcr-push.sh --tag latest
 
-  publish-release:
+  summary:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always()
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nspawn-image
-          path: images/
+          path: artifacts/
 
       - name: Summary
         run: |
-          echo "## nspawn Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "## nspawn Images Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | \`$(git rev-parse --short HEAD)\` |" >> $GITHUB_STEP_SUMMARY
-          for f in images/*.tar.zst; do
-            SIZE=$(du -h "$f" | cut -f1)
-            NAME=$(basename "$f")
-            echo "| **Image** | \`${NAME}\` (${SIZE}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Variant | Image | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|------|" >> $GITHUB_STEP_SUMMARY
+          for dir in artifacts/nspawn-*/; do
+            [[ -d "$dir" ]] || continue
+            VARIANT=$(basename "$dir" | sed 's/^nspawn-//')
+            for f in "${dir}"*.tar.zst; do
+              [[ -f "$f" ]] || continue
+              SIZE=$(du -h "$f" | cut -f1)
+              NAME=$(basename "$f")
+              echo "| ${VARIANT} | \`${NAME}\` | ${SIZE} |" >> $GITHUB_STEP_SUMMARY
+            done
           done
-          source config.env
-          echo "| **Registry** | \`ghcr.io/${{ github.repository }}/${IMAGE_NAME}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Pull" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "GHCR_TOKEN=\$TOKEN ./ghcr-pull.sh --extract" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`$(git rev-parse --short HEAD)\`" >> $GITHUB_STEP_SUMMARY

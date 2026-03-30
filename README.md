@@ -1,26 +1,94 @@
 # nspawn-image-builder
 
-Build portable, reproducible systemd-nspawn container images with S3 export/import and GHCR publishing.
+Build portable, reproducible systemd-nspawn container images with variant support, unit tests, S3 export/import, and GHCR publishing.
 
 ## Quick Start
 
 ```bash
-# 1. Edit config.env for your needs (packages, image name, etc.)
-# 2. Drop custom scripts into customize.d/ (they run in sorted order)
-# 3. Build
+# 1. Build the base image
 sudo ./build.sh
 
+# 2. Or build a specific variant
+sudo ./build.sh --variant dev
+sudo ./build.sh --variant docker
+sudo ./build.sh --variant hardened
+
+# 3. Build all variants at once
+sudo ./build.sh --all
+
 # 4. Validate
-sudo ./validate.sh
+sudo ./validate.sh --variant dev
 
-# 5. Export to S3
-./export.sh s3://my-bucket/images/
+# 5. Run tests
+sudo ./tests/run-tests.sh --variant dev
 
-# 6. On another VM: import and run
-sudo ./import.sh s3://my-bucket/images/nspawn-base.tar.zst
-sudo ./run.sh              # boot mode
-sudo ./run.sh --shell      # interactive shell
+# 6. Export to S3 or GHCR (see below)
 ```
+
+## Variants
+
+Variants define different image configurations. Each variant has its own packages and customization scripts.
+
+```bash
+# List available variants
+./build.sh --list-variants
+```
+
+| Variant | Image Name | Description |
+|---------|------------|-------------|
+| `base` | nspawn-base | Minimal system with essential utilities |
+| `dev` | nspawn-dev | Development tools: gcc, python3, git, cmake, gdb, tmux |
+| `docker` | nspawn-docker | Docker CE pre-installed with compose and buildx |
+| `hardened` | nspawn-hardened | Security-hardened: UFW, fail2ban, auditd, SSH hardening, sysctl tuning |
+
+### Creating a Custom Variant
+
+1. Create `variants/<name>.conf` with your configuration:
+   ```bash
+   IMAGE_NAME="nspawn-myvariant"
+   BASE_DISTRO="noble"
+   BASE_MIRROR="http://archive.ubuntu.com/ubuntu"
+   EXTRA_PACKAGES="curl wget nginx"
+   ```
+
+2. Optionally add customization scripts in `variants/<name>.d/`:
+   ```bash
+   # variants/myvariant.d/00-setup.sh
+   #!/bin/bash
+   set -euo pipefail
+   systemctl enable nginx
+   touch /etc/nspawn-customized
+   ```
+
+3. Optionally add variant-specific tests in `tests/suites/variant-<name>.sh`.
+
+The base `customize.d/` scripts always run first, then variant-specific ones.
+
+## Testing
+
+A TAP-format test framework validates built images.
+
+```bash
+# Run all tests for a variant
+sudo ./tests/run-tests.sh --variant base
+
+# Run a specific test suite
+sudo ./tests/run-tests.sh --variant dev --suite packages
+
+# List available test suites
+./tests/run-tests.sh --variant hardened --list
+```
+
+### Test Suites
+
+| Suite | What it checks |
+|-------|----------------|
+| `rootfs` | Directory structure, permissions, clean /tmp, clean apt cache |
+| `packages` | All configured packages installed, no broken packages, binaries executable |
+| `services` | systemd-networkd/resolved enabled, no broken units |
+| `security` | No world-writable files, no unexpected SUID, shadow permissions, no empty passwords |
+| `nspawn` | Container execution, /proc and /sys mounted, DNS resolution, os-release readable |
+| `variant-*` | Variant-specific checks (e.g., gcc works for dev, docker binary exists for docker) |
 
 ## GHCR (GitHub Container Registry)
 
@@ -28,74 +96,66 @@ Images can be published to GHCR as OCI artifacts, either via CI or manually.
 
 ### CI (GitHub Actions)
 
-The included workflow (`.github/workflows/build-and-publish.yml`) automatically:
+The included workflow automatically:
 
-1. Builds the image on every push to `main`
-2. Validates it with `validate.sh`
-3. Uploads the tarball as a **GitHub Actions artifact** (retained 30 days)
-4. Pushes to **GHCR** with both a commit-SHA tag and `latest`
+1. Discovers all variants and builds them in parallel (matrix strategy)
+2. Validates each image with `validate.sh`
+3. Runs the full test suite for each variant
+4. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
+5. On pushes to `main`: publishes each variant to **GHCR** with commit-SHA and `latest` tags
 
-Pull requests build and validate but do not publish.
+Use `workflow_dispatch` to build a specific variant or use a custom tag.
 
-The workflow uses `GITHUB_TOKEN` for authentication — no extra secrets needed.
-
-### Manual Push
+### Manual Push / Pull
 
 ```bash
-# Build first
-sudo ./build.sh
-
-# Push to GHCR (requires a PAT with packages:write, or GITHUB_TOKEN)
+# Push
 export GHCR_TOKEN="ghp_..."
-./ghcr-push.sh                   # pushes as :latest
-./ghcr-push.sh --tag v1.0.0      # pushes as :v1.0.0
+./ghcr-push.sh --tag v1.0.0
+
+# Pull and deploy
+sudo GHCR_TOKEN="ghp_..." ./ghcr-pull.sh --extract
+sudo ./run.sh
 ```
 
-### Pull from GHCR
+## S3 Export / Import
 
 ```bash
-# Download tarball to images/
-export GHCR_TOKEN="ghp_..."  # optional for public packages
-./ghcr-pull.sh
-
-# Download and extract directly to /var/lib/machines/ (requires root)
-sudo GHCR_TOKEN="ghp_..." ./ghcr-pull.sh --extract
-
-# Pull a specific tag
-./ghcr-pull.sh --tag v1.0.0
+./export.sh s3://my-bucket/images/
+sudo ./import.sh s3://my-bucket/images/nspawn-base.tar.zst
+sudo ./run.sh
+sudo ./run.sh --shell  # interactive shell
 ```
-
-The image reference defaults to `ghcr.io/<owner>/<repo>/<IMAGE_NAME>` (derived
-from the git remote). Override with `GHCR_REPO` in `config.env` or the
-environment.
 
 ## Customization
 
 Add shell scripts to `customize.d/`. They run inside the rootfs via `chroot` during build, sorted by filename. Example:
 
 ```bash
-# customize.d/10-install-docker.sh
+# customize.d/10-install-app.sh
 #!/bin/bash
-apt-get install -y docker.io
+apt-get install -y myapp
 touch /etc/nspawn-customized
 ```
-
-The `00-base-setup.sh` script handles timezone, networking, and creates the `/etc/nspawn-customized` marker file.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `config.env` | Image name, distro, mirror, extra packages, GHCR settings |
-| `customize.d/` | Drop-in scripts run inside the image during build |
-| `build.sh` | Builds rootfs + packs tarball |
-| `export.sh` | Uploads tarball to S3 |
-| `import.sh` | Downloads from S3 + extracts to /var/lib/machines/ |
-| `ghcr-push.sh` | Pushes tarball to GHCR as OCI artifact |
-| `ghcr-pull.sh` | Pulls tarball from GHCR, optionally extracts |
-| `run.sh` | Launches container via systemd-nspawn |
-| `validate.sh` | End-to-end validation of built image |
-| `.github/workflows/build-and-publish.yml` | CI: build, validate, publish |
+| `config.env` | Default image configuration |
+| `variants/` | Variant configs (`.conf`) and customize scripts (`.d/`) |
+| `customize.d/` | Base customize scripts (run for all variants) |
+| `build.sh` | Builds rootfs + packs tarball (supports `--variant`, `--all`) |
+| `validate.sh` | Quick validation of built image |
+| `tests/` | Test framework with TAP output |
+| `tests/run-tests.sh` | Test runner (supports `--variant`, `--suite`, `--list`) |
+| `tests/suites/` | Individual test suites |
+| `export.sh` | Upload tarball to S3 |
+| `import.sh` | Download from S3 + extract |
+| `ghcr-push.sh` | Push tarball to GHCR as OCI artifact |
+| `ghcr-pull.sh` | Pull tarball from GHCR |
+| `run.sh` | Launch container via systemd-nspawn |
+| `.github/workflows/` | CI: build all variants, test, publish |
 
 ## Dependencies
 
