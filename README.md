@@ -34,8 +34,13 @@ sudo ./tests/run-tests.sh --variant ubuntu-noble --arch arm64
 
 The builder supports both **amd64** (x86_64) and **arm64** (aarch64) architectures:
 
-- **Native builds**: When building on the same architecture (e.g., amd64 on x86_64)
+- **Native builds** (preferred): When building on the same architecture (e.g., amd64 on x86_64, arm64 on aarch64)
+  - Significantly faster (baseline performance)
+  - Used automatically in CI/CD with architecture-specific runners
 - **Cross-architecture builds**: Using QEMU user-mode emulation (e.g., arm64 on x86_64)
+  - Requires QEMU user-static and binfmt-support
+  - 10-50x slower than native builds
+  - Useful for local development without multi-arch hardware
 
 ### Cross-Architecture Prerequisites
 
@@ -141,14 +146,17 @@ Images can be published to GHCR as OCI artifacts, either via CI or manually.
 The included workflow automatically:
 
 1. Discovers all variants and builds them for **both amd64 and arm64** architectures in parallel (matrix strategy)
-2. Validates each image with `validate.sh`
-3. Runs the full test suite for each variant/architecture combination
-4. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
-5. On pushes to `main`: publishes each variant+architecture to **GHCR** with commit-SHA and `latest` tags
+2. Uses **architecture-native runners** for optimal build performance:
+   - `ubuntu-latest` (x86_64) for amd64 builds
+   - `ubuntu-24.04-arm64` for arm64 builds (requires GitHub-hosted ARM64 runners or self-hosted)
+3. Validates each image with `validate.sh`
+4. Runs the full test suite for each variant/architecture combination
+5. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
+6. On pushes to `main`: publishes each variant+architecture to **GHCR** with commit-SHA and `latest` tags
 
 Use `workflow_dispatch` to build a specific variant, architecture, or use a custom tag.
 
-**Note:** Cross-architecture builds use QEMU emulation and are slower than native builds (~10-50x). GitHub Actions provides x86_64 runners, so ARM64 builds are cross-compiled.
+**Note:** Native builds are always preferred for performance. If ARM64 runners are unavailable, the build scripts support cross-compilation using QEMU emulation, though this is 10-50x slower. GitHub-hosted ARM64 runners require a Team or Enterprise plan; alternatively, you can use self-hosted ARM64 runners.
 
 ### Manual Push / Pull
 

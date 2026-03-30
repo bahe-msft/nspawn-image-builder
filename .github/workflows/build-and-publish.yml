@@ -65,7 +65,7 @@ jobs:
 
   build:
     needs: discover
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
@@ -82,7 +82,17 @@ jobs:
       - name: Install ORAS
         run: |
           ORAS_VERSION="1.2.2"
-          curl -fsSL "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz" \
+          # Detect architecture for ORAS binary
+          ARCH=$(uname -m)
+          if [[ "$ARCH" == "x86_64" ]]; then
+            ORAS_ARCH="amd64"
+          elif [[ "$ARCH" == "aarch64" ]]; then
+            ORAS_ARCH="arm64"
+          else
+            echo "Unsupported architecture: $ARCH" >&2
+            exit 1
+          fi
+          curl -fsSL "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_${ORAS_ARCH}.tar.gz" \
             | sudo tar -xz -C /usr/local/bin oras
           oras version
 
