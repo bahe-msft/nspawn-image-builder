@@ -5,21 +5,21 @@ Build portable, reproducible systemd-nspawn container images with variant suppor
 ## Quick Start
 
 ```bash
-# 1. Build the base image
+# 1. Build the default image (ubuntu-noble)
 sudo ./build.sh
 
 # 2. Or build a specific variant
-sudo ./build.sh --variant dev
-sudo ./build.sh --variant debian
+sudo ./build.sh --variant ubuntu-noble
+sudo ./build.sh --variant ubuntu-noble-nvidia-560
 
 # 3. Build all variants at once
 sudo ./build.sh --all
 
 # 4. Validate
-sudo ./validate.sh --variant dev
+sudo ./validate.sh --variant ubuntu-noble
 
 # 5. Run tests
-sudo ./tests/run-tests.sh --variant dev
+sudo ./tests/run-tests.sh --variant ubuntu-noble
 
 # 6. Export to S3 or GHCR (see below)
 ```
@@ -35,9 +35,8 @@ Variants define different image configurations. Each variant has its own package
 
 | Variant | Image Name | Description |
 |---------|------------|-------------|
-| `base` | nspawn-base | Minimal Ubuntu Noble system with essential utilities |
-| `dev` | nspawn-dev | Development tools: gcc, python3, git, cmake, gdb, tmux |
-| `debian` | nspawn-debian | Debian Bookworm base system with essential utilities |
+| `ubuntu-noble` | nspawn-ubuntu-noble | Minimal Ubuntu 24.04 (Noble) system with essential utilities |
+| `ubuntu-noble-nvidia-560` | nspawn-ubuntu-noble-nvidia-560 | Ubuntu 24.04 (Noble) + NVIDIA 560 userspace drivers (container-friendly, no kernel modules) |
 
 ### Creating a Custom Variant
 
@@ -68,13 +67,13 @@ A TAP-format test framework validates built images.
 
 ```bash
 # Run all tests for a variant
-sudo ./tests/run-tests.sh --variant base
+sudo ./tests/run-tests.sh --variant ubuntu-noble
 
 # Run a specific test suite
-sudo ./tests/run-tests.sh --variant dev --suite packages
+sudo ./tests/run-tests.sh --variant ubuntu-noble-nvidia-560 --suite packages
 
 # List available test suites
-./tests/run-tests.sh --variant debian --list
+./tests/run-tests.sh --variant ubuntu-noble --list
 ```
 
 ### Test Suites
@@ -86,7 +85,7 @@ sudo ./tests/run-tests.sh --variant dev --suite packages
 | `services` | systemd-networkd/resolved enabled, no broken units |
 | `security` | No world-writable files, no unexpected SUID, shadow permissions, no empty passwords |
 | `nspawn` | Container execution, /proc and /sys mounted, DNS resolution, os-release readable |
-| `variant-*` | Variant-specific checks (e.g., gcc works for dev, Debian distro check for debian) |
+| `variant-*` | Variant-specific checks (e.g., hostname, NVIDIA repo/packages for nvidia variant) |
 
 ## GHCR (GitHub Container Registry)
 
