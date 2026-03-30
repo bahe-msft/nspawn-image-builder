@@ -158,12 +158,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Adjust mirror for Ubuntu ARM64 before debootstrap
-DISTRO_FAMILY="${DISTRO_FAMILY:-ubuntu}"
-if [[ "${DISTRO_FAMILY}" == "ubuntu" && "${ARCH}" == "arm64" && "${BASE_MIRROR}" == "http://archive.ubuntu.com/ubuntu" ]]; then
-    BASE_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
-fi
-
 log "=== Building nspawn image: ${IMAGE_NAME} ==="
 [[ -n "${VARIANT}" ]] && log "Variant: ${VARIANT}"
 log "Architecture: ${ARCH} (${DEBOOTSTRAP_ARCH})"
@@ -174,11 +168,7 @@ if ${CROSS_BUILD}; then
     log "Cross-build mode enabled"
 fi
 
-# Step 1: debootstrap
-log "Step 1/5: debootstrap"
-debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
-
-# Copy QEMU static binary for cross-architecture builds
+# Copy QEMU static binary BEFORE debootstrap for cross-architecture builds
 if ${CROSS_BUILD}; then
     log "Setting up QEMU emulation for cross-build"
     if [[ "${ARCH}" == "arm64" ]]; then
@@ -186,8 +176,13 @@ if ${CROSS_BUILD}; then
     else
         QEMU_BIN="/usr/bin/qemu-x86_64-static"
     fi
+    mkdir -p "${ROOTFS}/usr/bin"
     cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
 fi
+
+# Step 1: debootstrap
+log "Step 1/5: debootstrap"
+debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 
 # Step 2: Configure apt sources
 log "Step 2/5: Configure apt & install extra packages"
