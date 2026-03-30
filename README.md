@@ -12,16 +12,57 @@ sudo ./build.sh
 sudo ./build.sh --variant ubuntu-noble
 sudo ./build.sh --variant ubuntu-noble-nvidia-560
 
-# 3. Build all variants at once
+# 3. Build for a specific architecture
+sudo ./build.sh --variant ubuntu-noble --arch arm64
+sudo ./build.sh --variant ubuntu-noble --arch amd64
+
+# 4. Build all variants at once
 sudo ./build.sh --all
 
-# 4. Validate
+# 5. Validate
 sudo ./validate.sh --variant ubuntu-noble
+sudo ./validate.sh --variant ubuntu-noble --arch arm64
 
-# 5. Run tests
+# 6. Run tests
 sudo ./tests/run-tests.sh --variant ubuntu-noble
+sudo ./tests/run-tests.sh --variant ubuntu-noble --arch arm64
 
-# 6. Export to S3 or GHCR (see below)
+# 7. Export to S3 or GHCR (see below)
+```
+
+## Multi-Architecture Support
+
+The builder supports both **amd64** (x86_64) and **arm64** (aarch64) architectures:
+
+- **Native builds**: When building on the same architecture (e.g., amd64 on x86_64)
+- **Cross-architecture builds**: Using QEMU user-mode emulation (e.g., arm64 on x86_64)
+
+### Cross-Architecture Prerequisites
+
+For cross-architecture builds, install QEMU user-mode emulation:
+
+```bash
+sudo apt-get install qemu-user-static binfmt-support
+```
+
+### Architecture Naming
+
+- Built images for non-amd64 architectures automatically append the architecture suffix
+- Example: `nspawn-ubuntu-noble-arm64.tar.zst`
+- Default (amd64) images have no suffix: `nspawn-ubuntu-noble.tar.zst`
+
+### Examples
+
+```bash
+# Build for ARM64 (cross-compile if on x86_64)
+sudo ./build.sh --variant ubuntu-noble --arch arm64
+
+# Build for native architecture (auto-detected)
+sudo ./build.sh --variant ubuntu-noble
+
+# Build all variants for both architectures
+sudo ./build.sh --all  # builds amd64 by default
+sudo ./build.sh --all --arch arm64
 ```
 
 ## Variants
@@ -99,13 +140,15 @@ Images can be published to GHCR as OCI artifacts, either via CI or manually.
 
 The included workflow automatically:
 
-1. Discovers all variants and builds them in parallel (matrix strategy)
+1. Discovers all variants and builds them for **both amd64 and arm64** architectures in parallel (matrix strategy)
 2. Validates each image with `validate.sh`
-3. Runs the full test suite for each variant
+3. Runs the full test suite for each variant/architecture combination
 4. Uploads each tarball as a **GitHub Actions artifact** (retained 30 days)
-5. On pushes to `main`: publishes each variant to **GHCR** with commit-SHA and `latest` tags
+5. On pushes to `main`: publishes each variant+architecture to **GHCR** with commit-SHA and `latest` tags
 
-Use `workflow_dispatch` to build a specific variant or use a custom tag.
+Use `workflow_dispatch` to build a specific variant, architecture, or use a custom tag.
+
+**Note:** Cross-architecture builds use QEMU emulation and are slower than native builds (~10-50x). GitHub Actions provides x86_64 runners, so ARM64 builds are cross-compiled.
 
 ### Manual Push / Pull
 
@@ -160,6 +203,25 @@ touch /etc/nspawn-customized
 
 ## Dependencies
 
-`debootstrap`, `systemd-container`, `zstd`, and optionally:
+**Required:**
+- `debootstrap` - Bootstrap Debian/Ubuntu base systems
+- `systemd-container` - systemd-nspawn container manager
+- `zstd` - Compression for tarball images
+
+**For cross-architecture builds:**
+- `qemu-user-static` - QEMU user-mode emulation
+- `binfmt-support` - Binary format support for foreign architectures
+
+**Optional:**
 - `awscli` or `mc` for S3 export/import
 - [`oras`](https://oras.land) for GHCR push/pull (auto-installed by scripts if missing)
+
+### Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install debootstrap systemd-container zstd
+
+# For cross-architecture support
+sudo apt-get install qemu-user-static binfmt-support
+```

@@ -3,11 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Parse --variant flag
+# Parse flags
 VARIANT=""
+ARCH=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --variant) VARIANT="$2"; shift 2 ;;
+        --arch)    ARCH="$2"; shift 2 ;;
         *) echo "Unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -20,6 +22,23 @@ fi
 
 IMAGE_NAME="${IMAGE_NAME:-nspawn-base}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"
+
+# Normalize architecture
+if [[ -n "${ARCH}" ]]; then
+    case "${ARCH}" in
+        amd64|x86_64)  ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *)
+            echo "ERROR: Unsupported architecture: ${ARCH}" >&2
+            exit 1
+            ;;
+    esac
+    # Append architecture to image name if not default
+    if [[ "${ARCH}" != "amd64" ]]; then
+        IMAGE_NAME="${IMAGE_NAME}-${ARCH}"
+    fi
+fi
+
 TARBALL="${SCRIPT_DIR}/images/${IMAGE_NAME}.tar.zst"
 
 if [[ $EUID -ne 0 ]]; then
