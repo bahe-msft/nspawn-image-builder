@@ -168,21 +168,29 @@ if ${CROSS_BUILD}; then
     log "Cross-build mode enabled"
 fi
 
-# Copy QEMU static binary BEFORE debootstrap for cross-architecture builds
+# Step 1: debootstrap
+log "Step 1/5: debootstrap"
 if ${CROSS_BUILD}; then
+    # For cross-architecture builds, use --foreign and run second stage after QEMU setup
+    log "Running debootstrap first stage (foreign)"
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" --foreign "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
+    
+    # Copy QEMU static binary for cross-architecture emulation
     log "Setting up QEMU emulation for cross-build"
     if [[ "${ARCH}" == "arm64" ]]; then
         QEMU_BIN="/usr/bin/qemu-aarch64-static"
     else
         QEMU_BIN="/usr/bin/qemu-x86_64-static"
     fi
-    mkdir -p "${ROOTFS}/usr/bin"
     cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
+    
+    # Run debootstrap second stage
+    log "Running debootstrap second stage"
+    chroot "${ROOTFS}" /debootstrap/debootstrap --second-stage
+else
+    # Native build - run debootstrap normally
+    debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 fi
-
-# Step 1: debootstrap
-log "Step 1/5: debootstrap"
-debootstrap --variant=minbase --arch="${DEBOOTSTRAP_ARCH}" "${BASE_DISTRO}" "${ROOTFS}" "${BASE_MIRROR}"
 
 # Step 2: Configure apt sources
 log "Step 2/5: Configure apt & install extra packages"
