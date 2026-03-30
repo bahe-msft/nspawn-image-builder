@@ -13,12 +13,14 @@ fi
 
 # No unexpected SUID binaries
 SUID_BINS=$(find "${ROOTFS}" -xdev -path "${ROOTFS}/proc" -prune -o -path "${ROOTFS}/sys" -prune -o -path "${ROOTFS}/dev" -prune -o -type f -perm -4000 -print 2>/dev/null || true)
-# Common expected SUID: su, sudo, passwd, chsh, chfn, newgrp, mount, umount, ping
+# Common expected SUID binaries from standard packages
 UNEXPECTED_SUID=""
 for f in ${SUID_BINS}; do
     base=$(basename "$f")
     case "${base}" in
         su|sudo|passwd|chsh|chfn|newgrp|mount|umount|ping|gpasswd) ;;
+        dbus-daemon-launch-helper) ;;  # standard dbus SUID helper
+        pkexec|snap-confine|fusermount|fusermount3) ;;  # common system SUID
         *) UNEXPECTED_SUID+="${f} " ;;
     esac
 done
