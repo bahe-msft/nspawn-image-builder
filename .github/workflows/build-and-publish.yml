@@ -79,6 +79,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             debootstrap systemd-container zstd qemu-user-static binfmt-support
 
+      - name: Set up QEMU binfmt
+        if: matrix.arch != 'amd64'
+        run: |
+          # Ensure binfmt_misc is mounted and QEMU handlers are registered
+          sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc || true
+          sudo update-binfmts --enable
+          # Verify ARM64 emulation is available
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            ls -la /proc/sys/fs/binfmt_misc/qemu-aarch64 || echo "Warning: qemu-aarch64 not registered"
+            cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
+          fi
+
       - name: Install ORAS
         run: |
           ORAS_VERSION="1.2.2"
