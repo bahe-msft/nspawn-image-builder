@@ -182,6 +182,16 @@ if ${CROSS_BUILD}; then
     else
         QEMU_BIN="/usr/bin/qemu-x86_64-static"
     fi
+    
+    # Ensure target directory exists
+    mkdir -p "${ROOTFS}/usr/bin"
+    
+    # Verify QEMU binary exists on host
+    if [[ ! -f "${QEMU_BIN}" ]]; then
+        echo "ERROR: QEMU binary not found: ${QEMU_BIN}" >&2
+        exit 1
+    fi
+    
     cp "${QEMU_BIN}" "${ROOTFS}${QEMU_BIN}"
     
     # Run debootstrap second stage
