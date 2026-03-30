@@ -4,7 +4,7 @@ set -euo pipefail
 echo "[customize] NVIDIA GPU driver setup for Ubuntu Noble"
 
 # Set hostname
-echo 'nspawn-nvidia-560' > /etc/hostname
+echo 'nspawn-ubuntu-noble-nvidia-560' > /etc/hostname
 
 # Install prerequisites for adding repositories
 apt-get update -qq

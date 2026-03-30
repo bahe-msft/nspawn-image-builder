@@ -1,7 +1,7 @@
 #!/bin/bash
-# Test suite: base variant specifics
+# Test suite: ubuntu-noble variant specifics
 
-suite_header "Variant: base"
+suite_header "Variant: ubuntu-noble"
 
 # Customization marker
 assert_file_exists "/etc/nspawn-customized"
