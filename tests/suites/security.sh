@@ -21,6 +21,7 @@ for f in ${SUID_BINS}; do
         su|sudo|passwd|chsh|chfn|newgrp|mount|umount|ping|gpasswd) ;;
         dbus-daemon-launch-helper) ;;  # standard dbus SUID helper
         pkexec|snap-confine|fusermount|fusermount3) ;;  # common system SUID
+        polkit-agent-helper-1) ;;  # polkit authentication agent (installed by docker, etc.)
         *) UNEXPECTED_SUID+="${f} " ;;
     esac
 done
