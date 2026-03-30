@@ -73,6 +73,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up QEMU for cross-architecture builds
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
